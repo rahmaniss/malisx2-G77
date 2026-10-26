@@ -177,6 +177,11 @@ lower_sysvals(nir_builder *b, nir_intrinsic_instr *intr, void *data)
    case nir_intrinsic_load_base_instance:
       val = load_sysval(b, graphics, bit_size, vs.base_instance);
       break;
+   case nir_intrinsic_load_draw_id:
+      /* gl_DrawID / DrawIndex: no multi-draw (multiDrawIndirect is off and
+       * indirect draws have drawCount <= 1), so it is always 0. */
+      val = nir_imm_zero(b, 1, bit_size);
+      break;
    case nir_intrinsic_load_noperspective_varyings_pan:
       val = load_sysval(b, graphics, bit_size, vs.noperspective_varyings);
       break;

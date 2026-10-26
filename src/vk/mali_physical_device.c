@@ -404,10 +404,23 @@ fp16_for_arch(uint32_t arch)
    return arch == 9;
 }
 
+/*
+ * shaderDrawParameters (Vulkan 1.1 core). BaseVertex/BaseInstance come from
+ * the first_vertex/base_instance sysvals the draw path already uploads;
+ * DrawIndex is lowered to 0 in mali_shader.c (no multi-draw).
+ */
+static bool
+draw_params_for_arch(uint32_t arch)
+{
+   return arch == 9;
+}
+
 static struct vk_device_extension_table
 device_extensions_for_arch(uint32_t arch)
 {
    struct vk_device_extension_table ext = mali_device_extensions;
+   if (draw_params_for_arch(arch))
+      ext.KHR_shader_draw_parameters = true;
    if (fp16_for_arch(arch)) {
       /* shaderFloat16 / shaderInt8 structs for a Vulkan 1.1 device. */
       ext.KHR_shader_float16_int8 = true;
@@ -538,6 +551,9 @@ get_features(struct vk_features *f, uint32_t arch)
       /* VK_KHR_push_descriptor */
       .pushDescriptor = true,
    };
+
+   if (draw_params_for_arch(arch))
+      f->shaderDrawParameters = true;
 
    if (fp16_for_arch(arch)) {
       /* VK_KHR_shader_float16_int8: FP16 arithmetic in shaders. */

@@ -390,10 +390,31 @@ static const struct vk_device_extension_table mali_device_extensions = {
    .KHR_push_descriptor = true,
 };
 
+/*
+ * FP16 and 16-bit storage. Experimental, arch 9 (G77/G57) only for now:
+ * the hardware has native FP16 ALU on Valhall, but whether kraid lowers
+ * every f16 NIR op for v9 has to be checked against the pinned Mesa
+ * (mali_kraid_support.h, generated from kraid's nir.rs). Make
+ * fp16_for_arch() return false to drop it again if a shader fails to
+ * compile.
+ */
+static bool
+fp16_for_arch(uint32_t arch)
+{
+   return arch == 9;
+}
+
 static struct vk_device_extension_table
 device_extensions_for_arch(uint32_t arch)
 {
    struct vk_device_extension_table ext = mali_device_extensions;
+   if (fp16_for_arch(arch)) {
+      /* shaderFloat16 / shaderInt8 structs for a Vulkan 1.1 device. */
+      ext.KHR_shader_float16_int8 = true;
+      /* Core in 1.1; the names are for applications that ask for 1.0. */
+      ext.KHR_16bit_storage = true;
+      ext.KHR_storage_buffer_storage_class = true;
+   }
    return ext;
 }
 
@@ -517,6 +538,22 @@ get_features(struct vk_features *f, uint32_t arch)
       /* VK_KHR_push_descriptor */
       .pushDescriptor = true,
    };
+
+   if (fp16_for_arch(arch)) {
+      /* VK_KHR_shader_float16_int8: FP16 arithmetic in shaders. */
+      f->shaderFloat16 = true;
+      /* shaderInt8 stays off until 8-bit ALU/storage is checked in kraid. */
+      f->shaderInt8 = false;
+
+      /* VK_KHR_16bit_storage (Vulkan 1.1 core). Buffer and push-constant
+       * access has to be checked in mali_shader.c (UBO/SSBO/push-constant
+       * lowering, several paths skip bit sizes below 32); stage IO stays
+       * 32-bit (storageInputOutput16 off). */
+      f->storageBuffer16BitAccess = true;
+      f->uniformAndStorageBuffer16BitAccess = true;
+      f->storagePushConstant16 = true;
+      f->storageInputOutput16 = false;
+   }
 }
 
 /* Sample counts for a format of the given bytes per pixel: 1 and 4

@@ -1,0 +1,118 @@
+name: Build Android (arm64)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      BINDGEN_VERSION: "0.71.1"   # README: >= 0.71.1, not 0.72.0/0.73.0/0.73.1
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # vcs_tag in src/meson.build needs git history
+
+      - name: System packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ninja-build bison flex libclang-dev clang \
+            zlib1g-dev libexpat1-dev pkg-config python3-pip
+
+      - name: Python packages
+        run: pip install --break-system-packages "meson>=1.7" mako PyYAML packaging
+
+      - name: Android NDK r28c
+        id: ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r28c
+          add-to-path: false
+
+      - name: Rust toolchain (stable + Android target)
+        run: |
+          rustup toolchain install stable --profile minimal --target aarch64-linux-android
+          rustup default stable
+          rustc --version
+
+      - name: Cache cargo (bindgen)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/bindgen
+            ~/.cargo/registry
+          key: bindgen-${{ env.BINDGEN_VERSION }}-${{ runner.os }}
+
+      - name: Install bindgen
+        run: |
+          if ! command -v bindgen >/dev/null || ! bindgen --version | grep -q "$BINDGEN_VERSION"; then
+            cargo install bindgen-cli --version "$BINDGEN_VERSION" --locked
+          fi
+          bindgen --version
+
+      - name: Fetch pinned Mesa
+        run: |
+          MESA_COMMIT=$(grep -oP "mesa_commit = '\K[0-9a-f]+" meson.build)
+          echo "Mesa commit: $MESA_COMMIT"
+          git init mesa
+          git -C mesa fetch --depth 1 https://github.com/bmdhacks/armsx2-turnip.git "$MESA_COMMIT"
+          git -C mesa checkout FETCH_HEAD
+
+      - name: Point the cross file at the runner's NDK
+        run: |
+          cat > ndk-override.ini <<EOF2
+          [constants]
+          ndk = '${{ steps.ndk.outputs.ndk-path }}'
+          EOF2
+          cat ndk-override.ini
+
+      - name: Configure
+        run: |
+          meson setup build-android \
+            --cross-file ndk-override.ini \
+            --cross-file cross/android-aarch64.ini
+
+      - name: Build
+        run: ninja -C build-android
+
+      - name: Strip and package
+        run: |
+          NDK='${{ steps.ndk.outputs.ndk-path }}'
+          STRIP="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip"
+          mkdir -p dist
+          "$STRIP" -o dist/libvulkan_malisx2.so build-android/src/libvulkan_malisx2.so
+          cat > dist/meta.json <<EOF2
+          {
+            "schemaVersion": 1,
+            "name": "malisx2 G77",
+            "description": "malisx2 Vulkan driver, Mali-G77 (arch 9), commit ${GITHUB_SHA::7}",
+            "author": "rahmaniss",
+            "packageVersion": "1",
+            "vendor": "Arm",
+            "driverVersion": "malisx2-${GITHUB_SHA::7}",
+            "minApi": 29,
+            "libraryName": "libvulkan_malisx2.so"
+          }
+          EOF2
+          (cd dist && zip -r ../malisx2-G77-${GITHUB_SHA::7}.zip .)
+          ls -l dist *.zip
+
+      - name: Upload driver pack
+        uses: actions/upload-artifact@v4
+        with:
+          name: malisx2-G77-driver-pack
+          path: malisx2-G77-*.zip
+
+      - name: Upload raw library and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs
+          path: |
+            build-android/meson-logs/
+            dist/libvulkan_malisx2.so
+          if-no-files-found: ignore

@@ -1,3 +1,4 @@
+# Place at .github/workflows/build-android.yml
 name: Build Android (arm64)
 
 on:
@@ -64,17 +65,12 @@ jobs:
 
       - name: Point the cross file at the runner's NDK
         run: |
-          cat > ndk-override.ini <<EOF2
-          [constants]
-          ndk = '${{ steps.ndk.outputs.ndk-path }}'
-          EOF2
-          cat ndk-override.ini
+          cp cross/android-aarch64.ini android-ci.ini
+          sed -i "s|^ndk = .*|ndk = '${{ steps.ndk.outputs.ndk-path }}'|" android-ci.ini
+          grep -n "^ndk" android-ci.ini
 
       - name: Configure
-        run: |
-          meson setup build-android \
-            --cross-file ndk-override.ini \
-            --cross-file cross/android-aarch64.ini
+        run: meson setup build-android --cross-file android-ci.ini
 
       - name: Build
         run: ninja -C build-android
@@ -98,21 +94,13 @@ jobs:
             "libraryName": "libvulkan_malisx2.so"
           }
           EOF2
-          (cd dist && zip -r ../malisx2-G77-${GITHUB_SHA::7}.zip .)
-          ls -l dist *.zip
+          ls -l dist
 
       - name: Upload driver pack
         uses: actions/upload-artifact@v4
         with:
           name: malisx2-G77-driver-pack
-          path: malisx2-G77-*.zip
-
-      - name: Upload raw library and logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-logs
           path: |
-            build-android/meson-logs/
             dist/libvulkan_malisx2.so
-          if-no-files-found: ignore
+            dist/meta.json
+          if-no-files-found: error

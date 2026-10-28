@@ -61,6 +61,7 @@
 #include "util/blob.h"
 #include "util/log.h"
 #include "util/u_dynarray.h"
+#include "util/u_debug.h"
 
 #include "vk_graphics_state.h"
 #include "vk_alloc.h"
@@ -1582,6 +1583,53 @@ lower_clip_distance_fs(nir_shader *nir, const struct pan_varying_layout *vs_layo
 /* ---------------------------------------------------------------------- */
 /* Backend compile                                                         */
 
+/*
+ * FP16 workaround: execute 16-bit ALU in 32 bits. shaderFloat16 stays
+ * advertised (a 32-bit result is a valid refinement of a half-precision
+ * one), but kraid then never sees a 16-bit ALU instruction, which is where
+ * it is least exercised on v9. Conversions and pack/unpack ops are left
+ * alone: their 16-bit side is the point of the instruction.
+ *
+ * On by default for arch 9. Turn it off with the Android property
+ * debug.mesa.malisx2_f16_widen=false (or the MALISX2_F16_WIDEN
+ * environment variable) and restart the application.
+ */
+static unsigned
+widen_f16_alu_cb(const nir_instr *instr, UNUSED void *data)
+{
+   if (instr->type != nir_instr_type_alu)
+      return 0;
+   const nir_alu_instr *alu = nir_instr_as_alu(instr);
+   const nir_op_info *info = &nir_op_infos[alu->op];
+
+   if (info->is_conversion || alu->op == nir_op_mov ||
+       !strncmp(info->name, "vec", 3) || !strncmp(info->name, "pack_", 5) ||
+       !strncmp(info->name, "unpack_", 7))
+      return 0;
+
+   bool has16 = alu->def.bit_size == 16;
+   for (unsigned i = 0; i < info->num_inputs; i++)
+      has16 |= nir_src_bit_size(alu->src[i].src) == 16;
+   return has16 ? 32 : 0;
+}
+
+static void
+widen_f16_alu(nir_shader *nir, unsigned arch)
+{
+   static int enabled = -1;
+   if (enabled < 0)
+      enabled = debug_get_bool_option("MALISX2_F16_WIDEN", true);
+   if (!enabled || arch != 9)
+      return;
+
+   bool progress = false;
+   NIR_PASS(progress, nir, nir_lower_bit_size, widen_f16_alu_cb, NULL);
+   if (progress) {
+      NIR_PASS(_, nir, nir_opt_constant_folding);
+      NIR_PASS(_, nir, nir_opt_dce);
+   }
+}
+
 static VkResult
 compile_nir(struct mali_device *dev, nir_shader *nir,
             const struct pan_compile_inputs *compile_inputs,
@@ -1597,6 +1645,7 @@ compile_nir(struct mali_device *dev, nir_shader *nir,
    } while (hoisted);
    NIR_PASS(_, nir, nir_shader_alu_pass, drop_trunc_before_f2i,
             nir_metadata_control_flow, NULL);
+   widen_f16_alu(nir, mali_device_physical(dev)->arch);
    pan_postprocess_nir(nir, &inputs, &s->info);
 
    struct lower_sysvals_ctx ctx = { .state = state };

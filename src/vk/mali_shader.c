@@ -1590,9 +1590,11 @@ lower_clip_distance_fs(nir_shader *nir, const struct pan_varying_layout *vs_layo
  * it is least exercised on v9. Conversions and pack/unpack ops are left
  * alone: their 16-bit side is the point of the instruction.
  *
- * On by default for arch 9. Turn it off with the Android property
- * debug.mesa.malisx2_f16_widen=false (or the MALISX2_F16_WIDEN
- * environment variable) and restart the application.
+ * On by default for arch 9. Turn it off, then restart the application,
+ * with either the environment variable MESA_MALISX2_F16_WIDEN=false (the
+ * form a frontend's driver-variables field accepts: MESA_ prefix) or
+ * MALISX2_F16_WIDEN=false, or the Android property
+ * debug.mesa.malisx2_f16_widen=false.
  */
 static unsigned
 widen_f16_alu_cb(const nir_instr *instr, UNUSED void *data)
@@ -1618,7 +1620,8 @@ widen_f16_alu(nir_shader *nir, unsigned arch)
 {
    static int enabled = -1;
    if (enabled < 0)
-      enabled = debug_get_bool_option("MALISX2_F16_WIDEN", true);
+      enabled = debug_get_bool_option("MESA_MALISX2_F16_WIDEN",
+                   debug_get_bool_option("MALISX2_F16_WIDEN", true));
    if (!enabled || arch != 9)
       return;
 

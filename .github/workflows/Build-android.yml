@@ -80,7 +80,7 @@ jobs:
           NDK='${{ steps.ndk.outputs.ndk-path }}'
           STRIP="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip"
           mkdir -p dist
-          "$STRIP" -o dist/libvulkan_malisx2.so build-android/src/libvulkan_malisx2.so
+          "$STRIP" --strip-debug -o dist/libvulkan_malisx2.so build-android/src/libvulkan_malisx2.so
           cat > dist/meta.json <<EOF2
           {
             "schemaVersion": 1,

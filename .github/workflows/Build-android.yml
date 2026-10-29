@@ -63,6 +63,14 @@ jobs:
           git -C mesa fetch --depth 1 https://github.com/bmdhacks/armsx2-turnip.git "$MESA_COMMIT"
           git -C mesa checkout FETCH_HEAD
 
+      - name: Apply Mesa patches
+        run: |
+          for p in patches/*.patch; do
+            [ -e "$p" ] || continue
+            echo "Applying $p"
+            git -C mesa apply -p1 "$GITHUB_WORKSPACE/$p"
+          done
+
       - name: Point the cross file at the runner's NDK
         run: |
           cp cross/android-aarch64.ini android-ci.ini
@@ -104,3 +112,4 @@ jobs:
             dist/libvulkan_malisx2.so
             dist/meta.json
           if-no-files-found: error
+          

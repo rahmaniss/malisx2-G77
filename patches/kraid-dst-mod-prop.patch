@@ -1,0 +1,22 @@
+--- a/src/panfrost/compiler/kraid/dst_mod_prop.rs
++++ b/src/panfrost/compiler/kraid/dst_mod_prop.rs
+@@ -253,8 +253,18 @@
+                 debug_assert!(vec.comps() == 1);
+                 let ssa = vec[0];
+ 
++                // try_remove_clamp() wants the type the value is *read* as,
++                // not the type of this op's result: a f32-result FAdd that
++                // reads a f16 source through a widening swizzle (fsat of a
++                // f16 -> f32 conversion) reads a F16 def, and passing
++                // op.dst_type (F32) there trips its debug_assert.
++                let src_dt = match SrcType::from_src(src, op.dst_type) {
++                    SrcType::F16 => DataType::F16,
++                    SrcType::F32 => DataType::F32,
++                    SrcType::None => op.dst_type,
++                };
+                 let clamp_changed =
+-                    self.try_remove_clamp(&mut op.clamp, ssa, op.dst_type);
++                    self.try_remove_clamp(&mut op.clamp, ssa, src_dt);
+ 
+                 if let Some(ssa_f16) = self.def_f16.get(&ssa) {
+                     debug_assert!(op.dst_type == DataType::F32);

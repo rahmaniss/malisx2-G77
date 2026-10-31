@@ -78,7 +78,7 @@ jobs:
           grep -n "^ndk" android-ci.ini
 
       - name: Configure
-        run: meson setup build-android --cross-file android-ci.ini
+        run: meson setup build-android --cross-file android-ci.ini -Db_ndebug=true
 
       - name: Build
         run: ninja -C build-android

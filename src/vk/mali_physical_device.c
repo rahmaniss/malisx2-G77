@@ -500,9 +500,9 @@ get_features(struct vk_features *f, uint32_t arch)
        * shader tests and discards on (mali_shader.c, "Clip distances").
        * The test is per pixel, at the pixel centre, so under
        * multisampling the clipped edge is not antialiased; and with a
-       * fragment shader that forces early fragment tests (on v11, one that
-       * also discards or writes memory, depth or stencil), clipped
-       * fragments still write depth and stencil. Cull distances are not
+       * fragment shader that forces early fragment tests and also
+       * discards or writes memory, depth or stencil, clipped fragments
+       * still write depth and stencil. Cull distances are not
        * supported. */
       .shaderClipDistance = arch == 7 || arch == 11,
       .fillModeNonSolid = false,
@@ -855,6 +855,10 @@ get_properties(const struct mali_physical_device *pdev, const char *name,
       .protectedNoFault = false,
       .maxPerSetDescriptors = UINT16_MAX,
       .maxMemoryAllocationSize = max_alloc,
+
+      /* VK_KHR_timeline_semaphore: Mesa's emulated timelines
+       * (vk_sync_timeline) keep 64-bit values with no limit on the gap. */
+      .maxTimelineSemaphoreValueDifference = UINT64_MAX,
 
       /* VK_KHR_driver_properties */
       .driverID = VK_DRIVER_ID_ARM_PROPRIETARY,

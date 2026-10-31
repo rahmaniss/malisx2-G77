@@ -3,6 +3,11 @@ name: Build Android (arm64)
 
 on:
   workflow_dispatch:
+    inputs:
+      ndebug:
+        description: "Build with -Db_ndebug=true (asserts compiled out)"
+        type: boolean
+        default: false
 
 jobs:
   build:
@@ -78,7 +83,7 @@ jobs:
           grep -n "^ndk" android-ci.ini
 
       - name: Configure
-        run: meson setup build-android --cross-file android-ci.ini
+        run: meson setup build-android --cross-file android-ci.ini ${{ inputs.ndebug && '-Db_ndebug=true' || '' }}
 
       - name: Build
         run: ninja -C build-android
@@ -107,7 +112,7 @@ jobs:
       - name: Upload driver pack
         uses: actions/upload-artifact@v4
         with:
-          name: malisx2-G77-driver-pack
+          name: malisx2-G77-driver-pack${{ inputs.ndebug && '-ndebug' || '' }}
           path: |
             dist/libvulkan_malisx2.so
             dist/meta.json
